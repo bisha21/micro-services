@@ -1,0 +1,84 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL")
+}
+enum UserRole {
+  USER
+  ORGANIZER
+  ADMIN
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  // Add APPLE, GITHUB later if needed
+}
+
+model User {
+  id            String      @id @default(uuid())
+  name          String
+  email         String      @unique
+  phone         String?
+  emailVerified Boolean     @default(false)
+  role          UserRole    @default(USER)
+
+  // Password for email login
+  password      String?     // hashed with Argon2id
+
+  // Social login
+  provider      AuthProvider @default(EMAIL)
+  providerId    String?     // e.g. Google sub/id
+  providerData  Json?       // store extra info if needed
+
+  // Timestamps
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations (add more models below)
+  refreshTokens RefreshToken[]
+  sessions      UserSession[]
+
+  @@index([email])
+  @@index([provider, providerId]) // for fast social login lookup
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  tokenHash   String   // store hashed refresh token (never plain)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // For rotation + reuse detection
+  family      String?  // group related refresh tokens (optional but recommended)
+  expiresAt   DateTime
+  revoked     Boolean  @default(false)
+  replacedBy  String?  // if rotated, points to new token id
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+model UserSession {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceInfo  String?  // e.g. "Chrome on Windows" or JSON
+  ipAddress   String?
+  userAgent   String?
+  lastActive  DateTime @default(now())
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
